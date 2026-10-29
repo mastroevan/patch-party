@@ -6,3 +6,6 @@ dist/
 playwright-report/
 test-results/
 .DS_Store
+artifacts/rules/*
+!artifacts/rules/.gitkeep
+artifacts/proofs/*

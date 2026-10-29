@@ -8,11 +8,15 @@
     "build": "tsc --noEmit && vite build --config apps/web/vite.config.ts",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
+    "prove-codex": "tsx scripts/prove-codex.ts",
     "start": "tsx apps/server/index.ts",
     "format": "prettier --write apps packages scripts tests playwright.config.ts tsconfig.json package.json"
   },
   "dependencies": {
+    "@openai/codex-sdk": "^0.166.0",
+    "acorn": "^8.19.0",
     "phaser": "^3.90.0",
+    "quickjs-emscripten": "^0.32.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ws": "^8.18.0"

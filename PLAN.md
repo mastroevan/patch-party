@@ -96,11 +96,13 @@ Done when: a player can finish a round, simulated viewers vote, and a trusted sa
 
 Implementation: local Node/WebSocket authority, React/Phaser arena, simulated chat, three built-in rules, pause/reset/reveal controls, and logic/browser tests. Setup and current boundaries are documented in README.md.
 
-### 2. Codex technical proof — highest-risk work first
+### 2. Codex technical proof — highest-risk work first — implemented
 
 Verify SDK authentication and a real generation call. Implement the isolated rule runner and command interface. Generate the coin/gravity rule, validate it, and activate the exact resulting artifact in the arena.
 
 Done when: the full proposal-to-play loop works with a real Codex output; infinite loops, invalid commands, and failed builds leave gameplay responsive. Measure generation time before promising any demo timing.
+
+Implementation: Codex SDK execution worker in disposable workspace (`apps/server/codex/generate.ts`, `scripts/codex-restricted.mjs`); isolated QuickJS execution in dedicated worker with CPU/memory limits and AST checks (`packages/rule-runner/`); rule coordinator lifecycle machine with progress streaming, timeouts, and cancel/retry/skip/library fallback recovery (`apps/server/codex/coordinator.ts`); dynamic modifier engine in Phaser arena (`packages/game/Arena.ts`); interactive Rule Workshop UI with 4-stage pipeline and code/evidence inspector (`apps/web/src/BuildPanel.tsx`); technical proof runner (`scripts/prove-codex.ts`) and verified artifacts (`artifacts/rules/`); comprehensive unit and end-to-end browser tests.
 
 ### 3. Twitch and OBS integration
 

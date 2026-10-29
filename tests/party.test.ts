@@ -73,7 +73,7 @@ test("sample nomination credits its author; unsupported freeform is explicit", (
   chat(p, "1", "alice", "!rule coins flip gravity");
   assert.equal(p.state.authors.gravity, "alice");
   chat(p, "2", "bob", "!rule dragons");
-  assert.match(p.state.feed.at(-1)!.text, /milestone 2/);
+  assert.match(p.state.feed.at(-1)!.text, /not supported yet/);
   p.dispatch({ type: "start" });
   chat(p, "3", "bob", "!rule gravity");
   assert.equal(p.state.authors.gravity, "alice");

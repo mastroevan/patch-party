@@ -2,7 +2,9 @@
 
 **Chat invents the rules. The streamer plays them.**
 
-Milestone 1 is a local playable vertical slice: a 45-second platform arena, a simulated community chat, server-managed ballots, and three trusted sample mechanics. Twitch connectivity and Codex generation are planned for subsequent milestones. Nothing in this version is presented as a live AI build.
+Milestones 1 & 2 are implemented:
+- **Milestone 1**: Playable 45-second platform arena, simulated community chat, server-managed ballots, and three trusted sample mechanics.
+- **Milestone 2**: Live Codex rule builder pipeline (`Chat chose → Building → Checking → Ready`), isolated QuickJS WebAssembly rule runner with strict language & memory boundaries, real Codex SDK execution worker, evidence inspection (thread ID, SHA-256 hash, duration, AST/determinism checks, source code), and streamer recovery controls (retry, cancel, skip, library fallback).
 
 ## Run locally
 
@@ -15,45 +17,50 @@ npm run dev
 
 Open http://127.0.0.1:5173. The local state server listens on 127.0.0.1:3001. Both ports must be available. Keep the terminal running; Ctrl+C stops both processes.
 
-1. Optionally nominate a sample with `!rule gravity`, `!rule moon`, or `!rule sprint` before starting.
-2. Click **Start round**, then click the arena to focus it.
-3. Move with A/D or left/right arrows. Jump with Space, W, or up arrow. Coins earn 10 points. Spikes respawn you and deduct 5 points, with a brief invulnerability window.
-4. Send `!vote 1`, `!vote 2`, or `!vote 3` in the simulated chat. Change the viewer name to simulate another participant. Each viewer has one replaceable vote.
-5. Lock the vote early or let the 45-second round end. **End round** is also available for quick demonstrations.
-6. Click **Play next round**. A three-second reveal introduces the winner, then a new round begins with the sample mechanic active.
+### Trying Live Codex Mode
 
-Gravity Glitch makes coins reverse gravity for three seconds. Moon Boots lowers gravity and increases airtime. Sugar Rush grants a three-second speed boost after collecting a coin. Coins respawn after four seconds. Effect clocks stop during pause.
+1. In the lobby, switch the **Rule Engine** dropdown to **Live Codex**.
+2. Nominate a rule with simulated chat: e.g. `!rule every second coin flips gravity for 2 seconds`, or pick standard candidates like `!rule gravity`, `!rule moon`, or `!rule sprint`.
+3. Click **Start round**, then focus the arena to move with A/D and jump with Space/W.
+4. Viewers vote with `!vote 1`, `!vote 2`, or `!vote 3`.
+5. Lock the ballot (`Lock vote`) or let the round finish.
+6. The Rule Workshop initiates generation and validation:
+   - Pipeline stages: `01 · Chat chose` → `02 · Codex builds` → `03 · Checks` → `04 · Ready`.
+   - Checks are run in isolated QuickJS workers across 78 trusted behavioral scenarios and determinism replays.
+   - If credits or API access are depleted, the streamer can click **Use saved rule · library** to load and verify a baseline artifact from `artifacts/rules/`, or **Skip rule · play original** to fall back to classic physics.
+7. Once ready, click **Inspect generated code & validation evidence** to review the artifact's SHA-256 hash, thread ID, generation timing, and isolated checks.
+8. Click **Play next round →**. A 3-second patch reveal introduces the generated rule, and the new round starts with the exact generated module active in the arena!
 
-Ties go to the lowest numbered slot. No votes selects the original rules. Reset returns to the lobby and preserves the current server session's best score. Restarting the server clears all state.
+## Codex Technical Proof
 
-## Controls and connection behavior
-
-Pause freezes physics and the round clock. Reset clears the ballot, score, active rule, and effects. The first connected tab is the game controller; additional tabs can send simulated chat but cannot run a second scoring game. If the controller disconnects, the round pauses and another connected tab can take control. A newly mounted controller starts at spawn; physics snapshots are not persisted in this milestone.
-
-The application reconnects to the local server and receives a fresh state snapshot. Browser game input is active only when the arena is focused, so typing commands does not move the player. This desktop keyboard game has a responsive control layout but does not yet provide touch gameplay.
-
-## Development
+To run the standalone technical proof script:
 
 ```sh
-npm test                 # lifecycle, ballot and mechanic invariants
-npm run build            # TypeScript check + production frontend bundle
-npx playwright install chromium
-npm run test:e2e          # real browser gameplay and round transition
+npm run prove-codex
 ```
 
-The browser test can start the development servers or reuse ones already running. It resets the shared local session, so run it outside an active play session. The static frontend build is in `dist/`; the documented runtime for this milestone is `npm run dev`. `npm start` starts only the state server, not a static production host.
+This verifies SDK authentication against Codex, attempts live generation, and validates the accepted coin/gravity rule in the isolated QuickJS worker, printing the verified SHA-256 hash, thread ID, timings, and test checks.
+
+## Development & Testing
+
+```sh
+npm test                 # lifecycle, rule runner, proposal and coordinator tests (26 unit tests)
+npm run build            # TypeScript check + production frontend bundle
+npm run test:e2e          # real Playwright browser walkthrough for both sample and Codex modes
+npm run prove-codex      # standalone technical proof runner
+```
 
 ## Structure
 
-- `apps/server/party.ts`: round and ballot state, shared chat command handler, trusted sample selection.
-- `apps/server/index.ts`: loopback HTTP/WebSocket server, controller ownership, message validation, snapshots.
-- `apps/web/src`: operator interface and simulated chat adapter.
-- `packages/contracts`: shared messages, rule metadata, and state types.
-- `packages/game`: Phaser arena and sample mechanic modifiers.
-- `tests`: domain tests and browser walkthrough.
+- `apps/server/party.ts`: round and ballot state machine, proposal parser, effect management.
+- `apps/server/index.ts`: WebSocket server, message validation, controller ownership, coordinator wiring.
+- `apps/server/codex/`: Codex SDK worker (`generate.ts`), rule coordinator state machine (`coordinator.ts`).
+- `packages/rule-runner/`: Acorn AST validation, terminable QuickJS WebAssembly worker, behavioral verification suite (`index.ts`, `worker.mjs`).
+- `packages/contracts/`: Shared message, intent, command, and artifact schemas.
+- `packages/game/`: Phaser arcade physics arena with dynamic modifier support and effect HUD.
+- `apps/web/src/`: React frontend with arena host, simulated chat, and `BuildPanel` rule workshop.
+- `artifacts/rules/`: Validated rule artifacts and generation records.
+- `scripts/`: Dev runner, restricted Codex wrapper (`codex-restricted.mjs`), proof runner (`prove-codex.ts`).
+- `tests/`: Domain invariants, coordinator state machine, rule runner isolation, and Playwright browser tests.
 
-The simulated adapter sends normalized chat messages to the same `Party.chat` boundary intended for Twitch EventSub. Gameplay runs in the controller browser; the server accepts bounded coin/death reports and owns round deadlines and ballots. It is a local prototype, not an anti-cheat system or authenticated public service. Do not expose the development server publicly.
-
-No credentials are required. Game art is drawn in code. The supplied Patch Party artwork is bundled at `apps/web/public/brand/patchparty.png`; CSS frames its wordmark for the header and welcome screen without modifying the original image. Optional Google Fonts have system-font fallbacks.
-
-See [PLAN.md](PLAN.md) for later milestones and submission scope.
+See [PLAN.md](PLAN.md) for milestone roadmap and submission details.

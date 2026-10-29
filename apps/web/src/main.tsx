@@ -1,3 +1,4 @@
+import { BuildPanel } from "./BuildPanel";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -95,7 +96,15 @@ function App() {
   }
   const counts = state ? voteCounts(state) : [0, 0, 0],
     total = counts.reduce((a, b) => a + b, 0),
-    active = RULES[state?.activeRule ?? "classic"],
+    active = {
+      ...RULES[state?.activeRule ?? "classic"],
+      ...(state?.activeArtifact
+        ? {
+            name: state.activeArtifact.name,
+            description: state.activeArtifact.description,
+          }
+        : {}),
+    },
     can = connected && controller;
   return (
     <main>
@@ -107,7 +116,7 @@ function App() {
         </a>
         <nav>
           <span className="nav-active">Playground</span>
-          <span className="milestone">MILESTONE 01</span>
+          <span className="milestone">MILESTONE 02</span>
         </nav>
         <div className="connection">
           <i className={connected ? "dot" : "dot offline"} />
@@ -129,7 +138,12 @@ function App() {
           <span>✳</span>
           <div>
             <strong>A little chaos, locally.</strong>
-            <p>Simulated chat · built-in sample rules</p>
+            <p>
+              Simulated chat ·{" "}
+              {state?.mode === "codex"
+                ? "live Codex builds"
+                : "built-in sample rules"}
+            </p>
           </div>
         </div>
       </section>
@@ -152,6 +166,7 @@ function App() {
           still send simulated chat.
         </div>
       )}
+      {state?.build && <BuildPanel state={state} can={can} send={send} />}
       <div className="layout">
         <section className="stage-panel">
           <div className="stage-top">
@@ -276,18 +291,30 @@ function App() {
                   {state.coins} coins collected · {state.deaths} respawns
                 </p>
                 <div className="winner">
-                  <small>NEXT ROUND'S SAMPLE RULE</small>
+                  <small>
+                    {state.mode === "codex"
+                      ? "NEXT ROUND’S RULE"
+                      : "NEXT ROUND’S SAMPLE RULE"}
+                  </small>
                   <strong>
                     {RULES[state.pendingRule ?? "classic"].icon}{" "}
-                    {RULES[state.pendingRule ?? "classic"].name}
+                    {state.build?.artifact?.name ??
+                      RULES[state.pendingRule ?? "classic"].name}
                   </strong>
                   <span>
-                    {RULES[state.pendingRule ?? "classic"].description}
+                    {state.mode === "codex" && state.pendingRule !== "classic"
+                      ? state.intents[state.pendingRule!]?.description
+                      : RULES[state.pendingRule ?? "classic"].description}
                   </span>
                 </div>
                 <button
                   className="primary"
-                  disabled={!can}
+                  disabled={
+                    !can ||
+                    (state.mode === "codex" &&
+                      state.pendingRule !== "classic" &&
+                      state.build.status !== "ready")
+                  }
                   onClick={() => {
                     send({ type: "next" });
                     focusGame();
@@ -344,7 +371,10 @@ function App() {
             <div className="rule-icon">{active.icon}</div>
             <div>
               <small>
-                ON THE FIELD <span>BUILT-IN</span>
+                ON THE FIELD{" "}
+                <span>
+                  {state?.activeArtifact ? "CODEX GENERATED" : "BUILT-IN"}
+                </span>
               </small>
               <h3>{active.name}</h3>
               <p>{active.description}</p>
@@ -474,12 +504,20 @@ function App() {
                 <div className="card-top">
                   <span className="card-icon">{r.icon}</span>
                   <span className="card-type">
-                    {winner ? "WINNING PATCH" : "SAMPLE RULE"}
+                    {winner
+                      ? "WINNING PATCH"
+                      : state?.mode === "codex"
+                        ? "CODEX PROPOSAL"
+                        : "SAMPLE RULE"}
                   </span>
                   <kbd>{i + 1}</kbd>
                 </div>
                 <h3>{r.name}</h3>
-                <p>{r.description}</p>
+                <p>
+                  {state?.mode === "codex"
+                    ? state.intents[id]?.description
+                    : r.description}
+                </p>
                 <div className="card-bottom">
                   <span>@{state?.authors[id] ?? "community"}</span>
                   <strong>
@@ -509,7 +547,9 @@ function App() {
         <span>
           <b>✳</b> Built for the beautifully unpredictable.
         </span>
-        <span>Milestone 1 · No Twitch or Codex connection yet</span>
+        <span>
+          Milestone 2 · Live Codex available · Twitch chat still simulated
+        </span>
       </footer>
     </main>
   );

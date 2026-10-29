@@ -172,7 +172,10 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
       this.cooldowns[index] = 4000;
       this.trail.explode(14, c.x, c.y);
       bridge.send({ type: "coin", roundId: s.roundId, coinId: index });
-      if (s.activeRule === "gravity" || s.activeRule === "sprint") {
+      if (
+        !s.activeArtifact &&
+        (s.activeRule === "gravity" || s.activeRule === "sprint")
+      ) {
         this.effectMs = 3000;
         this.cameras.main.flash(100, 180, 150, 255, false);
       }
@@ -219,7 +222,15 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
         }
         return next;
       });
-      const m = modifiers(s.activeRule, this.effectMs);
+      const m = modifiers(
+        s.activeArtifact ? "classic" : s.activeRule,
+        this.effectMs,
+      );
+      if (s.activeArtifact)
+        for (const effect of s.effects) {
+          if (effect.kind === "gravity") m.gravity = effect.value;
+          else if (effect.kind === "speed") m.speed = effect.value;
+        }
       const body = this.player.body as Phaser.Physics.Arcade.Body;
       body.setGravityY(m.gravity);
       this.player.setFlipY(m.gravity < 0);
@@ -244,9 +255,13 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
       )
         body.setVelocityY(m.gravity < 0 ? m.jump : -m.jump);
       this.setEffect(
-        this.effectMs > 0
-          ? `${s.activeRule === "gravity" ? "GRAVITY FLIPPED" : "SPEED BOOST"} · ${(this.effectMs / 1000).toFixed(1)}s`
-          : "",
+        s.activeArtifact
+          ? s.effects.length
+            ? `${s.effects[0].kind === "gravity" ? (s.effects[0].value < 0 ? "GRAVITY FLIPPED" : "LOW GRAVITY") : "SPEED BOOST"} · ${(s.effects[0].remainingMs / 1000).toFixed(1)}s`
+            : ""
+          : this.effectMs > 0
+            ? `${s.activeRule === "gravity" ? "GRAVITY FLIPPED" : "SPEED BOOST"} · ${(this.effectMs / 1000).toFixed(1)}s`
+            : "",
       );
       for (const c of this.coins)
         if (c.active) c.setAngle(Math.sin(this.elapsed / 400 + c.x) * 10);

@@ -1,3 +1,8 @@
+import {
+  idleBuild,
+  defaultIntent,
+  parseProposal,
+} from "../../packages/contracts/rules.ts";
 import { randomUUID } from "node:crypto";
 import {
   CANDIDATES,
@@ -20,6 +25,22 @@ export class Party {
   }
   private initial(): PartyState {
     return {
+      mode: "samples",
+      build: idleBuild(),
+      proposals: {
+        gravity: "Every coin flips gravity for 3 seconds",
+        moon: "Moon boots",
+        sprint: "Every coin boosts speed for 3 seconds",
+      },
+      activeArtifact: null,
+      effects: [],
+      effectEpoch: 0,
+      runtimeError: null,
+      intents: {
+        gravity: defaultIntent("gravity"),
+        moon: defaultIntent("moon"),
+        sprint: defaultIntent("sprint"),
+      },
       sessionId: randomUUID(),
       phase: "lobby",
       paused: false,
@@ -78,21 +99,29 @@ export class Party {
         return;
       }
       const proposal = text.replace(/^!rule\s+/i, "");
-      const rule = /gravity|flip/i.test(proposal)
-        ? "gravity"
-        : /moon|jump/i.test(proposal)
-          ? "moon"
-          : /sprint|speed|sugar/i.test(proposal)
-            ? "sprint"
-            : null;
-      if (!rule) {
+      const intent = parseProposal(proposal);
+      if (!intent) {
         this.log(
           "Party",
-          "Local mode supports gravity, moon, or sprint. Freeform Codex rules arrive in milestone 2.",
+          "Supported: gravity, moon, sprint, or “every second coin flips gravity for 2 seconds”. Other mechanics are not supported yet.",
           "error",
         );
         return;
       }
+      if (
+        this.state.mode === "samples" &&
+        JSON.stringify(intent) !== JSON.stringify(defaultIntent(intent.slot))
+      ) {
+        this.log(
+          "Party",
+          "Custom parameters require Live Codex mode. Select it in the lobby first.",
+          "error",
+        );
+        return;
+      }
+      const rule = intent.slot;
+      this.state.proposals[rule] = proposal;
+      this.state.intents[rule] = intent;
       this.state.authors[rule] = name;
       this.log("Party", `${name} nominated ${RULES[rule].name}.`);
       return;
@@ -109,6 +138,37 @@ export class Party {
     switch (a.type) {
       case "chat":
         this.chat(a.message);
+        break;
+      case "mode":
+        if (s.phase === "lobby" && ["samples", "codex"].includes(a.mode)) {
+          s.mode = a.mode;
+          s.build = idleBuild();
+        }
+        break;
+      case "retry-build":
+        if (
+          s.mode === "codex" &&
+          s.ballot === "locked" &&
+          ["failed", "cancelled"].includes(s.build.status)
+        )
+          s.build = idleBuild();
+        break;
+      case "cancel-build":
+        if (["generating", "validating"].includes(s.build.status)) {
+          s.build.status = "cancelled";
+          s.build.message = "Build cancelled. Retry or play original rules.";
+        }
+        break;
+      case "skip-rule":
+        if (s.phase === "results") {
+          s.pendingRule = "classic";
+          s.pendingAuthor = "House rules";
+          s.build = {
+            ...idleBuild(),
+            status: "cancelled",
+            message: "Skipped explicitly; original rules selected.",
+          };
+        }
         break;
       case "start":
         if (s.phase === "lobby") this.beginRound();
@@ -127,6 +187,19 @@ export class Party {
         break;
       case "next":
         if (s.phase === "results") {
+          if (
+            s.mode === "codex" &&
+            s.pendingRule !== "classic" &&
+            s.build.status !== "ready"
+          )
+            return;
+          s.activeArtifact =
+            s.mode === "codex" && s.pendingRule !== "classic"
+              ? s.build.artifact
+              : null;
+          s.effects = [];
+          s.effectEpoch++;
+          s.runtimeError = null;
           s.phase = "reveal";
           s.remainingMs = 3000;
           s.paused = false;
@@ -168,6 +241,8 @@ export class Party {
         ) {
           this.lastDeath = this.clock;
           s.deaths++;
+          s.effectEpoch++;
+          s.effects = [];
           s.score = Math.max(0, s.score - 5);
         }
         break;
@@ -176,6 +251,9 @@ export class Party {
   private beginRound() {
     const s = this.state;
     s.phase = "playing";
+    s.build = idleBuild();
+    s.effects = [];
+    s.effectEpoch++;
     s.paused = false;
     s.round++;
     s.roundId = randomUUID();
@@ -219,13 +297,20 @@ export class Party {
     s.best = Math.max(s.best, s.score);
     this.log(
       "Party",
-      `Round complete: ${s.score} points. Your next patch is ready.`,
+      `Round complete: ${s.score} points. ${s.mode === "codex" ? "Check the build panel before activating your next rule." : "Your next patch is ready."}`,
     );
   }
   tick(ms: number) {
     this.clock += ms;
     const s = this.state;
     if (s.paused) return;
+    if (s.phase === "playing")
+      s.effects = s.effects
+        .map((effect) => ({
+          ...effect,
+          remainingMs: Math.max(0, effect.remainingMs - ms),
+        }))
+        .filter((effect) => effect.remainingMs > 0);
     if (s.phase === "playing" || s.phase === "reveal") {
       s.remainingMs = Math.max(0, s.remainingMs - ms);
       if (s.remainingMs === 0) {

@@ -1,3 +1,4 @@
+import { RuleCoordinator } from "./codex/coordinator.ts";
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { Party } from "./party.ts";
@@ -6,7 +7,7 @@ const party = new Party();
 const server = createServer((req, res) => {
   if (req.url === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, mode: "local", milestone: 1 }));
+    res.end(JSON.stringify({ ok: true, mode: "local", milestone: 2 }));
   } else {
     res.writeHead(404);
     res.end("Not found");
@@ -25,6 +26,7 @@ function broadcast() {
         }),
       );
 }
+const coordinator = new RuleCoordinator(party, broadcast);
 wss.on("connection", (socket, req) => {
   const origin = req.headers.origin;
   if (
@@ -40,7 +42,7 @@ wss.on("connection", (socket, req) => {
   }
   let windowStart = Date.now(),
     count = 0;
-  socket.on("message", (raw) => {
+  socket.on("message", async (raw) => {
     try {
       if (Date.now() - windowStart > 1000) {
         windowStart = Date.now();
@@ -61,6 +63,11 @@ wss.on("connection", (socket, req) => {
           "chat",
           "coin",
           "death",
+          "mode",
+          "retry-build",
+          "cancel-build",
+          "skip-rule",
+          "use-saved-rule",
         ].includes(a.type)
       )
         throw new Error("Unknown action.");
@@ -79,7 +86,16 @@ wss.on("connection", (socket, req) => {
         m.source = "simulated";
       } else if (socket !== controller)
         throw new Error("This tab is a spectator. Use the controller tab.");
+      const beforeCoins = party.state.coins;
       party.dispatch(a);
+      if (a.type === "use-saved-rule") await coordinator.useSavedRule();
+      coordinator.reconcile();
+      if (a.type === "coin" && party.state.coins > beforeCoins)
+        coordinator.event({
+          event: "coin",
+          coinCount: party.state.coins,
+          round: party.state.round,
+        });
       broadcast();
     } catch (error) {
       socket.send(
@@ -106,6 +122,7 @@ let last = performance.now();
 const timer = setInterval(() => {
   const now = performance.now();
   party.tick(now - last);
+  coordinator.reconcile();
   last = now;
   broadcast();
 }, 100);
@@ -114,6 +131,7 @@ server.listen(port, "127.0.0.1", () =>
   console.log(`Patch Party local server: http://127.0.0.1:${port}`),
 );
 function shutdown() {
+  coordinator.dispose();
   clearInterval(timer);
   for (const c of wss.clients) c.close();
   wss.close();

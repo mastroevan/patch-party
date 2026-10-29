@@ -1,3 +1,4 @@
+import type { AcceptedRule, BuildState, LiveEffect, RuleIntent } from "./rules";
 export type RuleId = "classic" | "gravity" | "moon" | "sprint";
 export const RULES: Record<
   RuleId,
@@ -45,6 +46,14 @@ export interface FeedItem {
   kind: "chat" | "system" | "error";
 }
 export interface PartyState {
+  mode: "samples" | "codex";
+  build: BuildState;
+  intents: Record<string, RuleIntent>;
+  proposals: Record<string, string>;
+  activeArtifact: AcceptedRule | null;
+  effects: LiveEffect[];
+  effectEpoch: number;
+  runtimeError: string | null;
   sessionId: string;
   phase: Phase;
   paused: boolean;
@@ -66,7 +75,20 @@ export interface PartyState {
   notice: string;
 }
 export type Action =
-  | { type: "start" | "pause" | "finish" | "lock" | "next" | "reset" }
+  | {
+      type:
+        | "start"
+        | "pause"
+        | "finish"
+        | "lock"
+        | "next"
+        | "reset"
+        | "retry-build"
+        | "cancel-build"
+        | "skip-rule"
+        | "use-saved-rule";
+    }
+  | { type: "mode"; mode: "samples" | "codex" }
   | { type: "chat"; message: ChatMessage }
   | { type: "coin"; roundId: string; coinId: number }
   | { type: "death"; roundId: string };
