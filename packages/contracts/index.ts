@@ -1,3 +1,5 @@
+import type { SavedRuleSummary, RulePreview } from "./library";
+import type { TwitchStatus } from "./twitch";
 import type { AcceptedRule, BuildState, LiveEffect, RuleIntent } from "./rules";
 export type RuleId = "classic" | "gravity" | "moon" | "sprint";
 export const RULES: Record<
@@ -46,6 +48,10 @@ export interface FeedItem {
   kind: "chat" | "system" | "error";
 }
 export interface PartyState {
+  library: SavedRuleSummary[];
+  preview: RulePreview | null;
+  persistenceError: string | null;
+  selectionSource: "none" | "vote" | "library";
   mode: "samples" | "codex";
   build: BuildState;
   intents: Record<string, RuleIntent>;
@@ -86,14 +92,23 @@ export type Action =
         | "retry-build"
         | "cancel-build"
         | "skip-rule"
-        | "use-saved-rule";
+        | "use-saved-rule"
+        | "preview-rule"
+        | "close-preview"
+        | "revert";
     }
+  | { type: "load-rule"; hash: string }
   | { type: "mode"; mode: "samples" | "codex" }
   | { type: "chat"; message: ChatMessage }
   | { type: "coin"; roundId: string; coinId: number }
   | { type: "death"; roundId: string };
 export type ServerMessage =
-  | { type: "state"; state: PartyState; controller: boolean }
+  | {
+      type: "state";
+      state: PartyState;
+      controller: boolean;
+      twitch: TwitchStatus;
+    }
   | { type: "error"; message: string };
 export const ROUND_MS = 45_000;
 export function voteCounts(s: PartyState) {

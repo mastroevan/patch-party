@@ -1,15 +1,29 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-// SDK adapter: preserve normal Codex auth while excluding user tools, MCP servers,
-// hooks, rules and shell access from untrusted viewer-driven coding tasks.
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+// Preserve Codex authentication while excluding user tools, MCP servers and hooks.
 const args = process.argv.slice(2);
 const index = args.indexOf("exec");
 if (index < 0) throw new Error("This adapter only supports codex exec.");
 args.splice(index + 1, 0, "--ignore-user-config", "--ignore-rules");
-const child = spawn(process.env.PATCH_PARTY_CODEX_PATH || "codex", args, {
-  stdio: "inherit",
-  env: process.env,
-});
+const override =
+  process.env.PATCH_PARTY_CODEX_PATH || process.env.CODEX_APP_RUNTIME_CLI_PATH;
+// Use the SDK's matching CLI instead of an unrelated, potentially retired global CLI.
+const sdkRequire = createRequire(import.meta.resolve("@openai/codex-sdk"));
+const cli = join(
+  dirname(sdkRequire.resolve("@openai/codex/package.json")),
+  "bin",
+  "codex.js",
+);
+const child = spawn(
+  override || process.execPath,
+  override ? args : [cli, ...args],
+  {
+    stdio: "inherit",
+    env: process.env,
+  },
+);
 child.on("error", (e) => {
   console.error(e.message);
   process.exitCode = 1;

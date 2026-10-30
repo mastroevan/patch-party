@@ -1,4 +1,17 @@
 import { test, expect } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+import { artifactHash } from "../../apps/server/codex/generate.ts";
+import type { PartyState } from "../../packages/contracts/index.ts";
+const live = process.env.PATCH_PARTY_LIVE_CODEX === "1";
+test.beforeEach(async ({ context }) => {
+  const res = await context.request.post("/api/operator/session", {
+    headers: {
+      Origin: process.env.PATCH_PARTY_TEST_ORIGIN || "http://127.0.0.1:5173",
+    },
+    data: { key: "playwright-operator-test-key-12345" },
+  });
+  expect(res.ok()).toBeTruthy();
+});
 test("play, vote, reveal a sample rule, collect under flipped gravity, reset", async ({
   page,
 }) => {
@@ -7,6 +20,7 @@ test("play, vote, reveal a sample rule, collect under flipped gravity, reset", a
   await page.goto("/");
   await expect(page.getByText("Local server online")).toBeVisible();
   await page.getByRole("button", { name: "Reset", exact: false }).click();
+  await page.getByLabel("Rule engine").selectOption("samples");
   await page.getByLabel("Chat command").fill("!rule gravity");
   await page.getByRole("button", { name: "Send chat message" }).click();
   await page.getByRole("button", { name: "Start round" }).click();
@@ -81,6 +95,7 @@ test("a spectator takes over a paused round after controller disconnect; reload 
   await page.goto("/");
   await expect(page.getByText("Local server online")).toBeVisible();
   await page.getByRole("button", { name: "Reset", exact: false }).click();
+  await page.getByLabel("Rule engine").selectOption("samples");
   await page.getByRole("button", { name: "Start round" }).click();
   const spectator = await context.newPage();
   await spectator.goto("/");
@@ -94,7 +109,7 @@ test("a spectator takes over a paused round after controller disconnect; reload 
   await spectator.getByRole("button", { name: "Send chat message" }).click();
   await expect(
     page.locator(".rule-card").nth(2).locator(".card-bottom strong"),
-  ).toHaveText("1 votes");
+  ).toHaveText("1 vote");
   await page.close();
   await expect(
     spectator.getByRole("button", { name: "Resume round", exact: false }),
@@ -106,7 +121,7 @@ test("a spectator takes over a paused round after controller disconnect; reload 
   await expect(spectator.getByText("Local server online")).toBeVisible();
   await expect(
     spectator.locator(".rule-card").nth(2).locator(".card-bottom strong"),
-  ).toHaveText("1 votes");
+  ).toHaveText("1 vote");
   await spectator
     .getByRole("button", { name: "Resume round", exact: false })
     .click();
@@ -117,9 +132,17 @@ test("a spectator takes over a paused round after controller disconnect; reload 
   await spectator.close();
 });
 
-test("select codex mode, vote, ready generated rule, inspect evidence, and activate in next round", async ({
+test(`${live ? "live Codex" : "saved fallback"} rule artifact is validated and activated in the arena`, async ({
   page,
-}) => {
+}, testInfo) => {
+  test.setTimeout(live ? 180000 : 60000);
+  let latest: PartyState | undefined;
+  page.on("websocket", (socket) =>
+    socket.on("framereceived", ({ payload }) => {
+      const message = JSON.parse(String(payload));
+      if (message.type === "state") latest = message.state;
+    }),
+  );
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -148,15 +171,20 @@ test("select codex mode, vote, ready generated rule, inspect evidence, and activ
   await page.getByRole("button", { name: "Lock vote" }).click();
   await expect(page.getByText("WINNING PATCH")).toBeVisible();
 
-  // Wait for build status to settle to READY or FAILED (e.g. if out of credits)
-  await expect(page.locator(".build-status")).toContainText(/READY|FAILED/, {
-    timeout: 15000,
-  });
-  const useSavedBtn = page.getByRole("button", {
-    name: "Use saved rule · library",
-  });
-  if (await useSavedBtn.isVisible()) {
-    await useSavedBtn.click();
+  if (live) {
+    // A live proof must never accept library fallback or a failed generation.
+    await expect(page.locator(".build-status")).toContainText(/READY|FAILED/, {
+      timeout: 125000,
+    });
+    expect(latest?.build.status, latest?.build.message).toBe("ready");
+    expect(latest?.build.artifact?.origin).toBe("live-codex");
+  } else {
+    await expect(page.locator(".build-status")).toContainText("FAILED", {
+      timeout: 15000,
+    });
+    await page
+      .getByRole("button", { name: "Use saved rule · library" })
+      .click();
   }
 
   // Expect status to be READY
@@ -167,10 +195,16 @@ test("select codex mode, vote, ready generated rule, inspect evidence, and activ
     page.getByText("Inspect generated code & validation evidence"),
   ).toBeVisible();
 
+  const accepted = latest!.build.artifact!;
+  expect(accepted.hash).toBe(artifactHash(accepted, accepted.intent));
+  expect(accepted.origin).toBe(live ? "live-codex" : "library");
+
   // Open evidence inspector
   await page.getByText("Inspect generated code & validation evidence").click();
   await expect(page.getByText("SHA-256")).toBeVisible();
-  await expect(page.getByText("QuickJS isolation")).toBeVisible();
+  await expect(
+    page.getByText("QuickJS isolation", { exact: false }),
+  ).toBeVisible();
 
   // End round
   await page.getByRole("button", { name: "End round" }).click();
@@ -186,7 +220,11 @@ test("select codex mode, vote, ready generated rule, inspect evidence, and activ
   });
 
   // Verify CODEX GENERATED badge in active rule
-  await expect(page.locator(".active-rule")).toContainText("CODEX GENERATED");
+  await expect(page.locator(".active-rule")).toContainText(
+    live ? "CODEX GENERATED" : "SAVED RULE · LIBRARY",
+  );
+  expect(latest!.activeArtifact!.hash).toBe(accepted.hash);
+  expect(latest!.activeArtifact!.source).toBe(accepted.source);
 
   // Move and collect a coin
   await page.locator(".game-host").focus();
@@ -196,5 +234,32 @@ test("select codex mode, vote, ready generated rule, inspect evidence, and activ
   await expect(page.getByTestId("score")).toHaveText("010");
   await expect(page.locator(".effect")).toContainText("GRAVITY FLIPPED");
 
+  await expect(page.locator(".effect")).toBeHidden({ timeout: 6000 });
+  const evidence = {
+    source: live ? "live-codex" : "saved-library",
+    artifact: accepted,
+    activeHash: latest!.activeArtifact!.hash,
+    browserChecks: [
+      "proposal and vote",
+      "accepted hash matches source",
+      "exact artifact activated",
+      "coin collected",
+      "gravity flipped",
+      "effect expired",
+      "no browser errors",
+    ],
+  };
+  await writeFile(
+    testInfo.outputPath("rule-evidence.json"),
+    JSON.stringify(evidence, null, 2),
+  );
+  await testInfo.attach("rule-evidence", {
+    path: testInfo.outputPath("rule-evidence.json"),
+    contentType: "application/json",
+  });
+  await page.screenshot({
+    path: testInfo.outputPath("rule-playthrough.png"),
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });

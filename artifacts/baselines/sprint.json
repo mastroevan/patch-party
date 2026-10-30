@@ -1,0 +1,23 @@
+{
+  "artifact": {
+    "name": "Saved sprint baseline",
+    "description": "Every coin boosts movement speed for 3 seconds.",
+    "source": "function(input) { if (input.event === \"coin\" && input.coinCount > 0) return [{kind: \"speed\", value: 390, durationMs: 3000}]; return []; }",
+    "origin": "library",
+    "hash": "fb95e8f0bd581b4c0a9c7d913d634ce02b2b4b8750ac57018c1c411a7646a65b",
+    "threadId": "hand-authored-baseline (no Codex thread)",
+    "createdAt": "2026-10-30T00:00:00.000Z",
+    "intent": {
+      "slot": "sprint",
+      "hook": "coin",
+      "kind": "speed",
+      "value": 390,
+      "durationMs": 3000,
+      "every": 1,
+      "description": "Every coin boosts movement speed for 3 seconds."
+    },
+    "checks": [],
+    "generationMs": 0
+  },
+  "provenance": "Hand-authored trusted fallback; not a live Codex generation."
+}

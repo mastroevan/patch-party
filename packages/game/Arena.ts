@@ -17,6 +17,7 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
     keys!: Record<string, Phaser.Input.Keyboard.Key>;
     coins: Phaser.Physics.Arcade.Sprite[] = [];
     roundKey = "";
+    effectEpoch = -1;
     effectMs = 0;
     elapsed = 0;
     invincible = 0;
@@ -177,7 +178,8 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
         (s.activeRule === "gravity" || s.activeRule === "sprint")
       ) {
         this.effectMs = 3000;
-        this.cameras.main.flash(100, 180, 150, 255, false);
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+          this.cameras.main.flash(100, 180, 150, 255, false);
       }
     }
     respawn() {
@@ -187,12 +189,17 @@ export function createArena(parent: HTMLElement, bridge: ArenaBridge) {
       this.player.setPosition(70, 480).setVelocity(0);
       this.effectMs = 0;
       this.invincible = 1200;
-      this.cameras.main.shake(100, 0.004);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+        this.cameras.main.shake(100, 0.004);
       bridge.send({ type: "death", roundId: s.roundId });
     }
     update(_time: number, delta: number) {
       const { state: s, connected, controller } = bridge.get();
       if (!s) return;
+      if (this.effectEpoch !== s.effectEpoch) {
+        this.effectEpoch = s.effectEpoch;
+        this.effectMs = 0;
+      }
       const key = s.sessionId + s.roundId;
       if (this.roundKey !== key) {
         this.roundKey = key;

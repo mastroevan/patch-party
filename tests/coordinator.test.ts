@@ -15,6 +15,7 @@ function createMockArtifact(
 ): AcceptedRule {
   const intent = defaultIntent(slot);
   return {
+    origin: "live-codex",
     name: slot === "gravity" ? "Gravity Glitch" : "Sugar Rush",
     description: intent.description,
     source:
@@ -326,4 +327,141 @@ test("active artifact execution applies effects and safely handles runtime error
   assert.equal(p.state.effects.length, 0);
   assert.match(p.state.runtimeError!, /Unexpected division by zero/);
   coordinator.dispose();
+});
+
+for (const [name, source] of [
+  ["infinite loop", "function(input) { while (true) {} }"],
+  [
+    "invalid command",
+    "function(input) { return [{kind: 'speed', value: 99999, durationMs: 3000}]; }",
+  ],
+]) {
+  test(`runtime ${name} leaves controls responsive and restores original physics`, async () => {
+    const p = new Party();
+    const artifact = { ...createMockArtifact(), source };
+    p.dispatch({ type: "start" });
+    p.state.activeArtifact = artifact;
+    const coordinator = new RuleCoordinator(p, () => {});
+    coordinator.event({ event: "coin", coinCount: 1, round: 1 });
+    // Run a host control while the isolated worker is executing.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    p.dispatch({ type: "pause" });
+    assert.equal(p.state.paused, true);
+    await coordinator.settled();
+    assert.equal(p.state.activeArtifact, null);
+    assert.equal(p.state.activeRule, "classic");
+    assert.deepEqual(p.state.effects, []);
+    assert.match(p.state.runtimeError!, /Rule disabled/);
+    p.dispatch({ type: "pause" });
+    assert.equal(p.state.paused, false);
+    coordinator.dispose();
+  });
+}
+
+test("saved rule completion cannot overwrite a reset session", async () => {
+  const p = new Party();
+  p.dispatch({ type: "mode", mode: "codex" });
+  p.dispatch({ type: "start" });
+  p.state.pendingRule = "gravity";
+  p.state.build.status = "failed";
+  const coordinator = new RuleCoordinator(p, () => {});
+  const pending = coordinator.useSavedRule();
+  p.dispatch({ type: "reset" });
+  assert.equal(await pending, false);
+  assert.equal(p.state.build.status, "idle");
+  assert.equal(p.state.build.artifact, null);
+  coordinator.dispose();
+});
+
+test("a generator that ignores cancellation cannot trap retry after timeout", async () => {
+  const p = new Party();
+  p.dispatch({ type: "mode", mode: "codex" });
+  p.dispatch({ type: "start" });
+  p.dispatch({
+    type: "chat",
+    message: {
+      id: "retry-vote",
+      userId: "alice",
+      name: "alice",
+      text: "!vote 1",
+      source: "simulated",
+    },
+  });
+  p.dispatch({ type: "lock" });
+  let calls = 0;
+  const coordinator = new RuleCoordinator(
+    p,
+    () => {},
+    async () => {
+      if (++calls === 1) return new Promise(() => {});
+      return createMockArtifact();
+    },
+    20,
+  );
+  coordinator.reconcile();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  await coordinator.settled();
+  assert.equal(p.state.build.status, "failed");
+  p.dispatch({ type: "retry-build" });
+  coordinator.reconcile();
+  await coordinator.settled();
+  assert.equal(p.state.build.status, "ready");
+  assert.equal(calls, 2);
+  coordinator.dispose();
+});
+
+test("preview checks never change gameplay and revert discards pending runtime effects", async () => {
+  const p = new Party();
+  p.dispatch({ type: "start" });
+  p.state.score = 30;
+  const artifact = createMockArtifact();
+  p.state.build = { ...p.state.build, status: "ready", artifact };
+  p.state.pendingAuthor = "alice";
+  p.state.activeArtifact = artifact;
+  p.state.activeRule = "gravity";
+  const coordinator = new RuleCoordinator(p, () => {});
+  const time = p.state.remainingMs;
+  await coordinator.previewRule();
+  assert.equal(p.state.score, 30);
+  assert.equal(p.state.remainingMs, time);
+  assert.equal(p.state.activeArtifact, artifact);
+  assert.equal(p.state.preview!.samples[1].commands[0].value, -850);
+  coordinator.event({ event: "coin", coinCount: 1, round: 1 });
+  p.dispatch({ type: "revert" });
+  await coordinator.settled();
+  assert.equal(p.state.activeArtifact, null);
+  assert.equal(p.state.activeRule, "classic");
+  assert.deepEqual(p.state.effects, []);
+  assert.equal(p.state.score, 30);
+  assert.equal(p.state.remainingMs, time);
+  coordinator.dispose();
+});
+
+test("a synchronous generator crash is reported as a failed build without escaping reconcile", async () => {
+  const p = new Party();
+  p.dispatch({ type: "mode", mode: "codex" });
+  p.dispatch({ type: "start" });
+  p.dispatch({
+    type: "chat",
+    message: {
+      id: "crash-vote",
+      userId: "alice",
+      name: "alice",
+      text: "!vote 1",
+      source: "simulated",
+    },
+  });
+  p.dispatch({ type: "lock" });
+  const c = new RuleCoordinator(
+    p,
+    () => {},
+    () => {
+      throw new Error("Worker could not start");
+    },
+  );
+  assert.doesNotThrow(() => c.reconcile());
+  await c.settled();
+  assert.equal(p.state.build.status, "failed");
+  assert.match(p.state.build.message, /Worker could not start/);
+  c.dispose();
 });

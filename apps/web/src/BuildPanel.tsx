@@ -1,3 +1,4 @@
+import { RulePreview } from "./RulePreview";
 import type { Action, PartyState } from "../../../packages/contracts";
 export function BuildPanel({
   state,
@@ -95,6 +96,30 @@ export function BuildPanel({
             Unsupported requests are rejected explicitly.
           </p>
           <div className="build-actions">
+            {b.status === "ready" && b.artifact && (
+              <button
+                disabled={!can}
+                onClick={() => send({ type: "preview-rule" })}
+              >
+                Preview next rule
+              </button>
+            )}
+            {state.selectionSource === "library" && (
+              <p className="queued-rule" role="status">
+                Saved rule queued · {b.artifact?.name}. Activate it with{" "}
+                {state.phase === "lobby" ? "Start round" : "Play next round"}.
+              </p>
+            )}
+            {state.phase === "lobby" &&
+              b.status === "ready" &&
+              state.selectionSource === "library" && (
+                <button
+                  disabled={!can}
+                  onClick={() => send({ type: "skip-rule" })}
+                >
+                  Cancel queued rule
+                </button>
+              )}
             {busy && (
               <button
                 disabled={!can}
@@ -131,6 +156,14 @@ export function BuildPanel({
           </div>
         </>
       )}
+      {state.preview && (
+        <RulePreview
+          key={state.preview.hash}
+          preview={state.preview}
+          can={can}
+          send={send}
+        />
+      )}
       {state.runtimeError && (
         <p className="error" role="alert">
           {state.runtimeError}
@@ -143,6 +176,12 @@ export function BuildPanel({
             <span>{artifact.hash.slice(0, 12)}</span>
           </summary>
           <dl>
+            <dt>Source</dt>
+            <dd>
+              {artifact.origin === "library"
+                ? "Saved rule · library"
+                : "Live Codex generation"}
+            </dd>
             <dt>Codex thread</dt>
             <dd>{artifact.threadId}</dd>
             <dt>SHA-256</dt>

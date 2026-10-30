@@ -1,0 +1,23 @@
+{
+  "artifact": {
+    "name": "Saved moon baseline",
+    "description": "Lower gravity for the whole round.",
+    "source": "function(input) { if (input.event === \"roundStart\") return [{kind: \"gravity\", value: 430, durationMs: 45000}]; return []; }",
+    "origin": "library",
+    "hash": "d849f5aa9ed7966d436e6242a9a19a764e62cde2653ace5e0ddf68cc511616b7",
+    "threadId": "hand-authored-baseline (no Codex thread)",
+    "createdAt": "2026-10-30T00:00:00.000Z",
+    "intent": {
+      "slot": "moon",
+      "hook": "roundStart",
+      "kind": "gravity",
+      "value": 430,
+      "durationMs": 45000,
+      "every": 1,
+      "description": "Lower gravity for the whole round."
+    },
+    "checks": [],
+    "generationMs": 0
+  },
+  "provenance": "Hand-authored trusted fallback; not a live Codex generation."
+}

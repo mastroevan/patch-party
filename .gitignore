@@ -9,3 +9,5 @@ test-results/
 artifacts/rules/*
 !artifacts/rules/.gitkeep
 artifacts/proofs/*
+
+.local/

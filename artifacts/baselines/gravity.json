@@ -1,0 +1,23 @@
+{
+  "artifact": {
+    "name": "Saved gravity baseline",
+    "description": "Every coin flips gravity for 3 seconds.",
+    "source": "function(input) { if (input.event === \"coin\" && input.coinCount > 0) return [{kind: \"gravity\", value: -850, durationMs: 3000}]; return []; }",
+    "origin": "library",
+    "hash": "28a8a7f9d218f6497c6021c7c1f4f48d7c0c283ded27a43a4333a8c5bc4f6d20",
+    "threadId": "hand-authored-baseline (no Codex thread)",
+    "createdAt": "2026-10-30T00:00:00.000Z",
+    "intent": {
+      "slot": "gravity",
+      "hook": "coin",
+      "kind": "gravity",
+      "value": -850,
+      "durationMs": 3000,
+      "every": 1,
+      "description": "Every coin flips gravity for 3 seconds."
+    },
+    "checks": [],
+    "generationMs": 0
+  },
+  "provenance": "Hand-authored trusted fallback; not a live Codex generation."
+}

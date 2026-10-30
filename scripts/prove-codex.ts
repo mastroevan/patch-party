@@ -4,7 +4,7 @@ import { defaultIntent } from "../packages/contracts/rules.ts";
 import { validateModule } from "../packages/rule-runner/index.ts";
 
 const intent = defaultIntent("gravity");
-try {
+if (!process.argv.includes("--saved")) {
   console.log("Attempting live Codex SDK generation...");
   const artifact = await generateRule({
     jobId: randomUUID(),
@@ -27,28 +27,13 @@ try {
       2,
     ),
   );
-} catch (error) {
-  console.warn(
-    "Live Codex generation not available or credit limit reached:",
-    (error as Error).message,
-  );
-  console.log(
-    "Validating saved coin/gravity rule artifact in isolated QuickJS runner...",
-  );
+} else {
   const saved = await loadSavedRule(intent);
-  if (!saved) {
-    throw new Error("No saved artifact found for intent.");
-  }
+  if (!saved) throw new Error("No saved artifact found for intent.");
   const checks = await validateModule(saved, intent);
   console.log(
     JSON.stringify(
-      {
-        source: "saved-artifact-verified",
-        hash: saved.hash,
-        threadId: saved.threadId,
-        generationMs: saved.generationMs,
-        checks,
-      },
+      { source: "saved-artifact-verified", hash: saved.hash, checks },
       null,
       2,
     ),

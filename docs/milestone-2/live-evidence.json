@@ -1,0 +1,39 @@
+{
+  "source": "live-codex",
+  "artifact": {
+    "origin": "live-codex",
+    "name": "Gravity Flip",
+    "description": "Every coin flips gravity for 3 seconds.",
+    "source": "function(input) {\n  if (input.event === \"coin\" && input.coinCount > 0 && input.coinCount % 1 === 0) {\n    return [{kind: \"gravity\", value: -850, durationMs: 3000}];\n  }\n  return [];\n}",
+    "hash": "f74f1e1618113c656b9fb7fe76133fad594d4072992c36cdfa82e1fafe7771b3",
+    "threadId": "01a18af1-44a2-7602-9ae3-63ef12f69f58",
+    "createdAt": "2026-10-30T03:53:55.794Z",
+    "intent": {
+      "slot": "gravity",
+      "hook": "coin",
+      "kind": "gravity",
+      "value": -850,
+      "durationMs": 3000,
+      "every": 1,
+      "description": "Every coin flips gravity for 3 seconds."
+    },
+    "checks": [
+      "Synchronous function; restricted language surface",
+      "QuickJS isolation: no host/network bindings; 8 MiB memory; 100 ms CPU budget",
+      "78 trusted behavioral scenarios passed",
+      "Fresh-worker deterministic replay passed",
+      "Command shape, magnitude and duration limits passed"
+    ],
+    "generationMs": 6025
+  },
+  "activeHash": "f74f1e1618113c656b9fb7fe76133fad594d4072992c36cdfa82e1fafe7771b3",
+  "browserChecks": [
+    "proposal and vote",
+    "accepted hash matches source",
+    "exact artifact activated",
+    "coin collected",
+    "gravity flipped",
+    "effect expired",
+    "no browser errors"
+  ]
+}

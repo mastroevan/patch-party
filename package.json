@@ -4,13 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx scripts/dev.ts",
+    "dev": "node --import tsx scripts/dev.ts",
     "build": "tsc --noEmit && vite build --config apps/web/vite.config.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:e2e": "playwright test",
-    "prove-codex": "tsx scripts/prove-codex.ts",
-    "start": "tsx apps/server/index.ts",
-    "format": "prettier --write apps packages scripts tests playwright.config.ts tsconfig.json package.json"
+    "prove-codex": "node --import tsx scripts/prove-codex.ts",
+    "start": "node --import tsx apps/server/index.ts",
+    "format": "prettier --write apps packages scripts tests playwright.config.ts tsconfig.json package.json",
+    "test:e2e:live": "PATCH_PARTY_LIVE_CODEX=1 playwright test --grep \"rule artifact\"",
+    "prove-codex:saved": "node --import tsx scripts/prove-codex.ts --saved",
+    "setup:https": "node --import tsx scripts/setup-https.ts",
+    "test:e2e:https": "PATCH_PARTY_TEST_ORIGIN=https://127.0.0.1:5173 playwright test tests/browser/milestone3.spec.ts"
   },
   "dependencies": {
     "@openai/codex-sdk": "^0.166.0",

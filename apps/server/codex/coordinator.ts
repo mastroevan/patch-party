@@ -5,10 +5,7 @@ import {
   loadSavedRule,
   type GenerationRequest,
 } from "./generate.ts";
-import {
-  executeRule,
-  validateModule,
-} from "../../../packages/rule-runner/index.ts";
+import { executeRule } from "../../../packages/rule-runner/index.ts";
 import type {
   AcceptedRule,
   RuleInput,
@@ -23,11 +20,17 @@ export class RuleCoordinator {
   private lastRound = "";
   private queue: Promise<void> = Promise.resolve();
   private disposed = false;
+  private previewSequence = 0;
   constructor(
     private party: Party,
     private changed: () => void,
     private generate: Generator = generateRule,
     private deadlineMs = 120000,
+    private accepted: (
+      artifact: AcceptedRule,
+      author: string,
+      proposal: string,
+    ) => Promise<void> = async () => {},
   ) {}
   reconcile() {
     if (this.disposed) return;
@@ -50,6 +53,8 @@ export class RuleCoordinator {
     )
       return;
     const intent = s.intents[s.pendingRule],
+      proposal = s.proposals[s.pendingRule],
+      author = s.pendingAuthor,
       jobId = randomUUID(),
       controller = new AbortController();
     s.build = {
@@ -77,22 +82,37 @@ export class RuleCoordinator {
         this.changed();
       }
     }, this.deadlineMs);
-    const promise = this.generate({
-      jobId,
-      proposal: s.proposals[s.pendingRule],
-      intent,
-      signal: controller.signal,
-      onProgress: (update) => {
+    let abortJob: () => void;
+    const aborted = new Promise<never>((_, reject) => {
+      abortJob = () => reject(new Error("Build cancelled."));
+      controller.signal.addEventListener("abort", abortJob, { once: true });
+    });
+    const generate = () =>
+      this.generate({
+        jobId,
+        proposal,
+        intent,
+        signal: controller.signal,
+        onProgress: (update) => {
+          if (current()) {
+            Object.assign(this.party.state.build, update, {
+              elapsedMs: Date.now() - s.build.startedAt!,
+            });
+            this.changed();
+          }
+        },
+      });
+    let generated: Promise<AcceptedRule>;
+    try {
+      generated = generate();
+    } catch (error) {
+      generated = Promise.reject(error);
+    }
+    const promise = Promise.race([generated, aborted])
+      .then(async (artifact) => {
         if (current()) {
-          Object.assign(this.party.state.build, update, {
-            elapsedMs: Date.now() - s.build.startedAt!,
-          });
-          this.changed();
-        }
-      },
-    })
-      .then((artifact) => {
-        if (current()) {
+          await this.accepted(artifact, author, proposal);
+          if (!current()) return;
           Object.assign(this.party.state.build, {
             status: "ready",
             artifact,
@@ -113,6 +133,7 @@ export class RuleCoordinator {
       })
       .finally(() => {
         clearTimeout(timer);
+        controller.signal.removeEventListener("abort", abortJob!);
         if (this.job?.controller === controller) this.job = null;
         this.changed();
       });
@@ -157,12 +178,34 @@ export class RuleCoordinator {
   }
   async useSavedRule(): Promise<boolean> {
     const s = this.party.state;
-    if (s.mode !== "codex" || !s.pendingRule || s.pendingRule === "classic")
+    if (
+      s.mode !== "codex" ||
+      !s.pendingRule ||
+      s.pendingRule === "classic" ||
+      !["failed", "cancelled"].includes(s.build.status)
+    )
       return false;
+    const jobId = s.build.jobId;
+    const pendingRule = s.pendingRule;
+    const current = () =>
+      !this.disposed &&
+      this.party.state === s &&
+      s.build.jobId === jobId &&
+      s.pendingRule === pendingRule &&
+      ["failed", "cancelled"].includes(s.build.status);
     const intent = s.intents[s.pendingRule];
     const saved = await loadSavedRule(intent);
-    if (!saved) return false;
-    const checks = await validateModule(saved, intent);
+    if (!saved || !current()) return false;
+    const checks = saved.checks;
+    if (!current()) return false;
+    await this.accepted(
+      { ...saved, checks },
+      s.pendingAuthor,
+      s.proposals[pendingRule],
+    );
+    if (!current()) return false;
+    this.job?.controller.abort();
+    s.preview = null;
     s.build = {
       status: "ready",
       jobId: randomUUID(),
@@ -175,6 +218,66 @@ export class RuleCoordinator {
     };
     this.changed();
     return true;
+  }
+  closePreview() {
+    this.previewSequence++;
+    this.party.state.preview = null;
+  }
+  async previewRule() {
+    const sequence = ++this.previewSequence;
+    const s = this.party.state,
+      artifact = s.build.artifact,
+      build = s.build;
+    if (build.status !== "ready" || !artifact)
+      throw new Error("Choose a ready rule to preview.");
+    const inputs: RuleInput[] = [
+      { event: "roundStart", coinCount: 0, round: Math.max(1, s.round + 1) },
+      ...[1, 2, 3].map((coinCount) => ({
+        event: "coin" as const,
+        coinCount,
+        round: Math.max(1, s.round + 1),
+      })),
+    ];
+    const outputs = await executeRule(artifact.source, inputs);
+    if (
+      this.disposed ||
+      sequence !== this.previewSequence ||
+      this.party.state !== s ||
+      s.build !== build
+    )
+      return;
+    s.preview = {
+      hash: artifact.hash,
+      name: artifact.name,
+      author: s.pendingAuthor,
+      samples: inputs.map((input, i) => ({ input, commands: outputs[i] })),
+    };
+    this.changed();
+  }
+  queueSavedRule(artifact: AcceptedRule, author: string, proposal: string) {
+    const s = this.party.state;
+    if (!["lobby", "results"].includes(s.phase))
+      throw new Error("Queue saved rules in the lobby or between rounds.");
+    this.job?.controller.abort();
+    s.mode = "codex";
+    s.pendingRule = artifact.intent.slot;
+    s.pendingAuthor = author;
+    s.selectionSource = "library";
+    s.intents[artifact.intent.slot] = artifact.intent;
+    s.proposals[artifact.intent.slot] = proposal;
+    s.authors[artifact.intent.slot] = author;
+    s.preview = null;
+    s.build = {
+      status: "ready",
+      artifact,
+      jobId: randomUUID(),
+      threadId: artifact.threadId,
+      attempt: 1,
+      startedAt: Date.now(),
+      elapsedMs: artifact.generationMs,
+      message: "Saved rule queued. Activate it at the next round boundary.",
+    };
+    this.changed();
   }
   async settled() {
     await this.job?.promise;

@@ -25,6 +25,10 @@ export class Party {
   }
   private initial(): PartyState {
     return {
+      library: [],
+      preview: null,
+      persistenceError: null,
+      selectionSource: "none",
       mode: "samples",
       build: idleBuild(),
       proposals: {
@@ -63,7 +67,7 @@ export class Party {
         sprint: "snackattack",
       },
       feed: [],
-      notice: "Local playground · built-in sample rules",
+      notice: "Ready for a new round. Propose a rule before you start.",
     };
   }
   private log(
@@ -136,6 +140,21 @@ export class Party {
   dispatch(a: Action) {
     const s = this.state;
     switch (a.type) {
+      case "close-preview":
+        s.preview = null;
+        break;
+      case "revert":
+        s.activeArtifact = null;
+        s.activeRule = "classic";
+        s.activeAuthor = "House rules";
+        s.effects = [];
+        s.effectEpoch++;
+        s.runtimeError = null;
+        this.log(
+          "Party",
+          "Original physics restored. Score and round timer preserved.",
+        );
+        break;
       case "chat":
         this.chat(a.message);
         break;
@@ -143,6 +162,9 @@ export class Party {
         if (s.phase === "lobby" && ["samples", "codex"].includes(a.mode)) {
           s.mode = a.mode;
           s.build = idleBuild();
+          s.preview = null;
+          s.pendingRule = null;
+          s.selectionSource = "none";
         }
         break;
       case "retry-build":
@@ -150,17 +172,22 @@ export class Party {
           s.mode === "codex" &&
           s.ballot === "locked" &&
           ["failed", "cancelled"].includes(s.build.status)
-        )
+        ) {
           s.build = idleBuild();
+          s.preview = null;
+        }
         break;
       case "cancel-build":
         if (["generating", "validating"].includes(s.build.status)) {
+          s.preview = null;
           s.build.status = "cancelled";
           s.build.message = "Build cancelled. Retry or play original rules.";
         }
         break;
       case "skip-rule":
-        if (s.phase === "results") {
+        if (["lobby", "results"].includes(s.phase)) {
+          s.preview = null;
+          s.selectionSource = "none";
           s.pendingRule = "classic";
           s.pendingAuthor = "House rules";
           s.build = {
@@ -171,7 +198,11 @@ export class Party {
         }
         break;
       case "start":
-        if (s.phase === "lobby") this.beginRound();
+        if (s.phase === "lobby") {
+          if (s.build.status === "ready" && s.build.artifact && s.pendingRule)
+            this.activate();
+          else this.beginRound();
+        }
         break;
       case "pause":
         if (s.phase === "playing") {
@@ -193,27 +224,19 @@ export class Party {
             s.build.status !== "ready"
           )
             return;
-          s.activeArtifact =
-            s.mode === "codex" && s.pendingRule !== "classic"
-              ? s.build.artifact
-              : null;
-          s.effects = [];
-          s.effectEpoch++;
-          s.runtimeError = null;
-          s.phase = "reveal";
-          s.remainingMs = 3000;
-          s.paused = false;
-          s.activeRule = s.pendingRule ?? "classic";
-          s.activeAuthor = s.pendingAuthor || "House rules";
+          this.activate();
         }
         break;
       case "reset": {
         const best = s.best;
         this.state = this.initial();
         this.state.best = best;
+        this.state.mode = s.mode;
+        this.state.library = s.library;
+        this.state.persistenceError = s.persistenceError;
         this.lastCoin.clear();
         this.seen.clear();
-        this.log("Party", "Fresh arena. Session best preserved.");
+        this.log("Party", "Fresh arena. Best score preserved.");
         break;
       }
       case "coin":
@@ -248,8 +271,26 @@ export class Party {
         break;
     }
   }
+  private activate() {
+    const s = this.state;
+    s.activeArtifact =
+      s.mode === "codex" && s.pendingRule !== "classic"
+        ? s.build.artifact
+        : null;
+    s.effects = [];
+    s.effectEpoch++;
+    s.runtimeError = null;
+    s.preview = null;
+    s.phase = "reveal";
+    s.remainingMs = 3000;
+    s.paused = false;
+    s.activeRule = s.pendingRule ?? "classic";
+    s.activeAuthor = s.pendingAuthor || "House rules";
+  }
   private beginRound() {
     const s = this.state;
+    s.preview = null;
+    s.selectionSource = "none";
     s.phase = "playing";
     s.build = idleBuild();
     s.effects = [];
@@ -273,6 +314,7 @@ export class Party {
     const s = this.state,
       counts = voteCounts(s),
       max = Math.max(...counts);
+    s.selectionSource = "vote";
     s.ballot = "locked";
     if (max === 0) {
       s.pendingRule = "classic";

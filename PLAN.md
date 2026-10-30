@@ -104,7 +104,9 @@ Done when: the full proposal-to-play loop works with a real Codex output; infini
 
 Implementation: Codex SDK execution worker in disposable workspace (`apps/server/codex/generate.ts`, `scripts/codex-restricted.mjs`); isolated QuickJS execution in dedicated worker with CPU/memory limits and AST checks (`packages/rule-runner/`); rule coordinator lifecycle machine with progress streaming, timeouts, and cancel/retry/skip/library fallback recovery (`apps/server/codex/coordinator.ts`); dynamic modifier engine in Phaser arena (`packages/game/Arena.ts`); interactive Rule Workshop UI with 4-stage pipeline and code/evidence inspector (`apps/web/src/BuildPanel.tsx`); technical proof runner (`scripts/prove-codex.ts`) and verified artifacts (`artifacts/rules/`); comprehensive unit and end-to-end browser tests.
 
-### 3. Twitch and OBS integration
+Verification (October 29, 2026, America/Denver): 33 unit/integration tests and the production build pass without local generated artifacts. Three offline browser tests pass using the bundled library for recovery. A separate strict live browser test generated the coin/gravity rule in 6.025 seconds, checked its source/hash, activated that exact artifact, collected a coin, and observed gravity flip and expiry without browser errors. Evidence: [docs/milestone-2/README.md](docs/milestone-2/README.md). Live proof commands fail on generation failure; offline fallback cannot satisfy the live milestone.
+
+### 3. Twitch and OBS integration — verified by the streamer
 
 Register/configure a Twitch application, implement the appropriate user OAuth flow and required chat scopes, and create EventSub subscriptions. Handle keepalive, reconnect, token renewal, revocation, and duplicate events according to current Twitch documentation. Keep credentials server-side. Add connection health to the control panel.
 
@@ -112,11 +114,19 @@ Provide OBS setup instructions for game capture and browser overlay. Authenticat
 
 Done when: two real viewer accounts submit/vote on a live Twitch test stream, the ballot locks correctly, and the broadcast shows the accepted rule in action. Test reconnection without double-counting votes; do not claim recovery of chat events Twitch does not replay.
 
-### 4. Presentation and operator recovery
+Implementation: server-side Confidential OAuth with read-only `user:read:chat`; EventSub `channel.chat.message` subscriptions; keepalive deadlines, warm handoff, cold reconnect and re-subscription; token validation/refresh/rotation/revocation; duplicate suppression and per-viewer proposal cooldowns; operator sessions and origin checks; redacted read-only OBS `/overlay` route with no game/controller; Twitch connection health and live evidence export. Setup: [docs/milestone-3.md](docs/milestone-3.md).
+
+Automated verification (October 30, 2026, America/Denver): 45 unit/integration tests, production build, and five browser tests. Twitch HTTP and EventSub traffic is mocked for automated tests. The user subsequently confirmed completing the live Twitch/OBS verification in chat on October 30, 2026; this live confirmation is user-reported, separate from the mocked automated tests.
+
+### 4. Presentation and operator recovery — implemented and verified
 
 Polish ballot cards, rule reveal, credits, readable instructions, sound cues, and restrained motion. Add preview, activation, cancel, pause, revert, and reset controls. Persist accepted rules and restore a clean lobby after restart.
 
 Done when: a new viewer understands how to participate from the broadcast, and the streamer can recover from a failed generation without restarting OBS or the application.
+
+Implementation: isolated rule preview with round-start/coin samples; credited rule reveal and explicit activation; immediate revert to original physics without resetting score/timer; cancel, retry, saved-rule, skip and reset recovery; an operator rule library with integrity checks and persistent author credit; clean restart restoring only best score, engine preference and saved rules; bounded migration of earlier accepted artifacts; broadcast participation instructions, next-rule/recovery state, opt-in sound cues, and reduced-motion support.
+
+Verification (October 30, 2026, America/Denver): 56 unit/integration tests, production build and six HTTPS browser tests. The milestone 4 browser walkthrough recovers from a deliberately failed build through a verified baseline, previews it without changing gameplay, activates at the next boundary, triggers its effect, reverts while preserving score, and reuses/cancels a queued library rule while the read-only OBS connection remains online. A real server restart test restores a fresh lobby and revalidates a saved artifact before explicit reuse. Details: [docs/milestone-4.md](docs/milestone-4.md).
 
 ### 5. Submission evidence
 

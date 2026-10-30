@@ -1,3 +1,9 @@
+import { RuleLibrary } from "./RuleLibrary";
+import { useSoundCues } from "./sound";
+import { OperatorGate } from "./OperatorGate";
+import { Overlay } from "./Overlay";
+import { TwitchPanel } from "./TwitchPanel";
+import type { TwitchStatus } from "../../../packages/contracts/twitch";
 import { BuildPanel } from "./BuildPanel";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -17,6 +23,11 @@ function App() {
     [controller, setController] = useState(false),
     [error, setError] = useState(""),
     [effect, setEffect] = useState("");
+  const sound = useSoundCues(state);
+  const [twitch, setTwitch] = useState<TwitchStatus | null>(null);
+  const liveChat =
+    !!twitch &&
+    ["connected", "reconnecting", "connecting"].includes(twitch.state);
   const [name, setName] = useState("pixelpilot"),
     [message, setMessage] = useState("!vote 1");
   const socket = useRef<WebSocket | null>(null),
@@ -48,6 +59,7 @@ function App() {
         const msg = JSON.parse(e.data) as ServerMessage;
         if (msg.type === "state") {
           setState(msg.state);
+          setTwitch(msg.twitch);
           setController(msg.controller);
         } else setError(msg.message);
       };
@@ -116,12 +128,14 @@ function App() {
         </a>
         <nav>
           <span className="nav-active">Playground</span>
-          <span className="milestone">MILESTONE 02</span>
+          <span className="milestone">MILESTONE 04</span>
         </nav>
         <div className="connection">
           <i className={connected ? "dot" : "dot offline"} />
           {connected ? "Local server online" : "Connecting…"}
-          <span className="local-tag">LOCAL DEMO</span>
+          <span className="local-tag">
+            {liveChat ? "TWITCH LIVE" : "LOCAL DEMO"}
+          </span>
         </div>
       </header>
       <section className="intro">
@@ -137,9 +151,11 @@ function App() {
         <div className="mode-note">
           <span>✳</span>
           <div>
-            <strong>A little chaos, locally.</strong>
+            <strong>
+              {liveChat ? "A little chaos, live." : "A little chaos, locally."}
+            </strong>
             <p>
-              Simulated chat ·{" "}
+              {liveChat ? "Twitch chat" : "Simulated chat"} ·{" "}
               {state?.mode === "codex"
                 ? "live Codex builds"
                 : "built-in sample rules"}
@@ -147,6 +163,37 @@ function App() {
           </div>
         </div>
       </section>
+      <section className="how-to-play" aria-label="How viewers participate">
+        <span>
+          <b>01 · PROPOSE</b> Before the round: <code>!rule gravity</code>
+        </span>
+        <span>
+          <b>02 · VOTE</b> During the round: <code>!vote 1–3</code>
+        </span>
+        <span>
+          <b>03 · PLAY</b> The winning rule starts next round.
+        </span>
+      </section>
+      <div className="session-tools">
+        <p role="status">
+          {state?.phase === "lobby"
+            ? state.notice
+            : state?.paused
+              ? "Round paused. The timer and effects are frozen."
+              : "One active rule. New rules begin at the next round boundary."}
+        </p>
+        <button
+          aria-pressed={sound.enabled}
+          onClick={() => void sound.toggle()}
+        >
+          {sound.enabled ? "Sound cues on" : "Sound cues off"}
+        </button>
+      </div>
+      {state?.persistenceError && (
+        <p className="error" role="alert">
+          {state.persistenceError}
+        </p>
+      )}
       {error && (
         <div className="error" role="alert">
           {error}
@@ -166,6 +213,7 @@ function App() {
           still send simulated chat.
         </div>
       )}
+      <TwitchPanel status={twitch} can={can} />
       {state?.build && <BuildPanel state={state} can={can} send={send} />}
       <div className="layout">
         <section className="stage-panel">
@@ -217,7 +265,7 @@ function App() {
                 <small>SEC</small>
               </div>
               <div className="best">
-                <span>SESSION BEST</span>
+                <span>BEST SCORE</span>
                 <strong>{String(state?.best ?? 0).padStart(3, "0")}</strong>
               </div>
             </div>
@@ -331,6 +379,9 @@ function App() {
                   {active.icon} {active.name}
                 </h2>
                 <p>{active.description}</p>
+                <span className="reveal-credit">
+                  Suggested by @{state.activeAuthor}
+                </span>
                 <strong className="countdown">
                   {Math.ceil(state.remainingMs / 1000)}
                 </strong>
@@ -362,6 +413,12 @@ function App() {
               >
                 End round
               </button>
+              <button
+                disabled={!can || state?.activeRule === "classic"}
+                onClick={() => send({ type: "revert" })}
+              >
+                Revert to original
+              </button>
               <button disabled={!can} onClick={() => send({ type: "reset" })}>
                 ↺ Reset
               </button>
@@ -373,7 +430,11 @@ function App() {
               <small>
                 ON THE FIELD{" "}
                 <span>
-                  {state?.activeArtifact ? "CODEX GENERATED" : "BUILT-IN"}
+                  {state?.activeArtifact
+                    ? state.activeArtifact.origin === "library"
+                      ? "SAVED RULE · LIBRARY"
+                      : "CODEX GENERATED"
+                    : "BUILT-IN"}
                 </span>
               </small>
               <h3>{active.name}</h3>
@@ -389,25 +450,28 @@ function App() {
             <h2>
               Community lab <span>◌</span>
             </h2>
-            <span className="badge">SIMULATED</span>
+            <span className="badge">{liveChat ? "TWITCH" : "SIMULATED"}</span>
           </div>
           <div className="chat-explainer">
-            Be the chat. Switch your viewer name to try a community vote.
+            {liveChat
+              ? `Send !rule and !vote commands in @${twitch?.channel}’s Twitch chat.`
+              : "Be the chat. Switch your viewer name to try a community vote."}
           </div>
           <div
             className="chat-feed"
             ref={feed}
             role="log"
-            aria-label="Simulated chat messages"
+            aria-label={
+              liveChat ? "Twitch chat messages" : "Simulated chat messages"
+            }
           >
             <div className="system-intro">
               <span>✳</span>
               <strong>Welcome to the party.</strong>
               <p>
-                Before starting, nominate a sample with{" "}
-                <code>!rule gravity</code>, <code>!rule moon</code>, or{" "}
-                <code>!rule sprint</code>. Once the round starts, use{" "}
-                <code>!vote 1–3</code>.
+                Before starting, nominate a rule with <code>!rule gravity</code>
+                , <code>!rule moon</code>, or <code>!rule sprint</code>. Once
+                the round starts, use <code>!vote 1–3</code>.
               </p>
             </div>
             {state?.feed.map((item) => (
@@ -417,51 +481,53 @@ function App() {
               </div>
             ))}
           </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              chat();
-            }}
-          >
-            <label htmlFor="viewer">SIMULATED VIEWER</label>
-            <div className="viewer-input">
-              <span>◉</span>
-              <input
-                id="viewer"
-                value={name}
-                maxLength={24}
-                onChange={(e) => setName(e.target.value)}
-                required
-                aria-label="Viewer name"
-              />
-            </div>
-            <div className="message-input">
-              <input
-                aria-label="Chat command"
-                value={message}
-                maxLength={180}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="!vote 1"
-                required
-              />
-              <button disabled={!connected} aria-label="Send chat message">
-                ↑
-              </button>
-            </div>
-            <div className="quick-votes">
-              <span>QUICK VOTE</span>
-              {[1, 2, 3].map((i) => (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={!connected || state?.ballot !== "voting"}
-                  onClick={() => chat(`!vote ${i}`)}
-                >
-                  {i}
+          {!liveChat && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                chat();
+              }}
+            >
+              <label htmlFor="viewer">SIMULATED VIEWER</label>
+              <div className="viewer-input">
+                <span>◉</span>
+                <input
+                  id="viewer"
+                  value={name}
+                  maxLength={24}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  aria-label="Viewer name"
+                />
+              </div>
+              <div className="message-input">
+                <input
+                  aria-label="Chat command"
+                  value={message}
+                  maxLength={180}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="!vote 1"
+                  required
+                />
+                <button disabled={!connected} aria-label="Send chat message">
+                  ↑
                 </button>
-              ))}
-            </div>
-          </form>
+              </div>
+              <div className="quick-votes">
+                <span>QUICK VOTE</span>
+                {[1, 2, 3].map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={!connected || state?.ballot !== "voting"}
+                    onClick={() => chat(`!vote ${i}`)}
+                  >
+                    {i}
+                  </button>
+                ))}
+              </div>
+            </form>
+          )}
         </aside>
       </div>
       <section className="ballot">
@@ -505,7 +571,9 @@ function App() {
                   <span className="card-icon">{r.icon}</span>
                   <span className="card-type">
                     {winner
-                      ? "WINNING PATCH"
+                      ? state?.selectionSource === "library"
+                        ? "STREAMER SELECTED"
+                        : "WINNING PATCH"
                       : state?.mode === "codex"
                         ? "CODEX PROPOSAL"
                         : "SAMPLE RULE"}
@@ -521,7 +589,8 @@ function App() {
                 <div className="card-bottom">
                   <span>@{state?.authors[id] ?? "community"}</span>
                   <strong>
-                    {counts[i]} <small>votes</small>
+                    {counts[i]}{" "}
+                    <small>{counts[i] === 1 ? "vote" : "votes"}</small>
                   </strong>
                 </div>
                 <div className="vote-track">
@@ -543,15 +612,22 @@ function App() {
           the lowest slot; no votes keeps the original rules.
         </p>
       </section>
+      {state && <RuleLibrary state={state} can={can} send={send} />}
       <footer>
         <span>
           <b>✳</b> Built for the beautifully unpredictable.
         </span>
-        <span>
-          Milestone 2 · Live Codex available · Twitch chat still simulated
-        </span>
+        <span>Milestone 4 · Preview, saved rules & operator recovery</span>
       </footer>
     </main>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  location.pathname === "/overlay" ? (
+    <Overlay />
+  ) : (
+    <OperatorGate>
+      <App />
+    </OperatorGate>
+  ),
+);

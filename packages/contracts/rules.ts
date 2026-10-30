@@ -23,6 +23,7 @@ export interface GeneratedModule {
   source: string;
 }
 export interface AcceptedRule extends GeneratedModule {
+  origin: "live-codex" | "library";
   hash: string;
   threadId: string;
   createdAt: string;
