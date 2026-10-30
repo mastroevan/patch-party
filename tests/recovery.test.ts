@@ -34,22 +34,27 @@ async function start(
     generate: async () => generated,
   });
   await app.listen(0);
-  const base = `http://127.0.0.1:${(app.server.address() as any).port}`;
-  const login = await fetch(base + "/api/operator/session", {
-    method: "POST",
-    headers: { Origin: origin },
-    body: JSON.stringify({ key }),
-  });
-  const ws = new WebSocket(base.replace("http:", "ws:") + "/ws", {
-    headers: {
-      Origin: origin,
-      Cookie: login.headers.get("set-cookie")!.split(";")[0],
-    },
-  });
-  const first = once(ws, "message");
-  await once(ws, "open");
-  await first;
-  return { app, ws, send: (a: unknown) => ws.send(JSON.stringify(a)) };
+  try {
+    const base = `http://127.0.0.1:${(app.server.address() as any).port}`;
+    const login = await fetch(base + "/api/operator/session", {
+      method: "POST",
+      headers: { Origin: origin },
+      body: JSON.stringify({ key }),
+    });
+    const ws = new WebSocket(base.replace("http:", "ws:") + "/ws", {
+      headers: {
+        Origin: origin,
+        Cookie: login.headers.get("set-cookie")!.split(";")[0],
+      },
+    });
+    const first = once(ws, "message");
+    await once(ws, "open");
+    await first;
+    return { app, ws, send: (a: unknown) => ws.send(JSON.stringify(a)) };
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }
 test("restart restores a fresh lobby and credited library, then explicitly previews and activates a saved rule", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "patch-party-restart-"));

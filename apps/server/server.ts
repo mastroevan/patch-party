@@ -212,7 +212,7 @@ export function createPartyServer(options: ServerOptions = {}) {
           .end(JSON.stringify(data));
       };
       if (url.pathname === "/api/health" && req.method === "GET") {
-        json(200, { ok: true, milestone: 3 });
+        json(200, { ok: true, milestone: 5 });
         return;
       }
       if (
@@ -527,6 +527,7 @@ export function createPartyServer(options: ServerOptions = {}) {
     last = now;
     broadcast();
   }, 100);
+  timer.unref();
   return {
     server,
     party,

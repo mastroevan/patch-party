@@ -2,13 +2,13 @@
 
 **Chat invents the rules. The streamer plays them.**
 
-Milestones 1–4 are implemented. Live Twitch/OBS verification was confirmed by the streamer:
+Milestones 1–5 are implemented and verified. Live Twitch/OBS verification was confirmed by the streamer:
 
 - **Milestone 1**: Playable 45-second platform arena, simulated community chat, server-managed ballots, and three trusted sample mechanics.
 - **Milestone 2**: Live Codex rule builder pipeline (`Chat chose → Building → Checking → Ready`), isolated QuickJS WebAssembly rule runner with strict language & memory boundaries, real Codex SDK execution worker, evidence inspection (thread ID, SHA-256 hash, duration, AST/determinism checks, source code), and streamer recovery controls (retry, cancel, skip, library fallback).
-
 - **Milestone 3**: Twitch broadcaster OAuth, read-only EventSub chat, reconnect/keepalive recovery, token rotation/revocation, authenticated operator controls, connection health, a read-only OBS overlay, and a live-test evidence report. [Setup and live acceptance guide](docs/milestone-3.md).
 - **Milestone 4**: Isolated preview, immediate revert, persistent credited rule library, clean lobby recovery, clearer viewer instructions, optional sound cues and reduced-motion support. [Operator recovery guide](docs/milestone-4.md).
+- **Milestone 5**: Clean fresh-checkout verification, complete live demo rehearsal guide, and submission readiness documentation. [Demo & submission guide](docs/milestone-5.md).
 
 ## Run locally
 

@@ -128,7 +128,7 @@ function App() {
         </a>
         <nav>
           <span className="nav-active">Playground</span>
-          <span className="milestone">MILESTONE 04</span>
+          <span className="milestone">MILESTONE 05</span>
         </nav>
         <div className="connection">
           <i className={connected ? "dot" : "dot offline"} />
@@ -617,7 +617,7 @@ function App() {
         <span>
           <b>✳</b> Built for the beautifully unpredictable.
         </span>
-        <span>Milestone 4 · Preview, saved rules & operator recovery</span>
+        <span>Milestone 5 · Demo & submission readiness</span>
       </footer>
     </main>
   );
